@@ -23,8 +23,9 @@ def check_file_type(filename, file_format: Format, filepath: str):
     if not settings.ENABLE_FILE_TYPE_CHECK:
         return
     kind = filetype.guess(filepath)
-    if not file_format.validate_mime(kind.mime):
-        raise FileTypeException(filename, kind.mime, file_format.accept_types)
+    mime = kind.mime if kind is not None else "unknown"
+    if not file_format.validate_mime(mime):
+        raise FileTypeException(filename, mime, file_format.accept_types)
 
 
 def check_uploaded_files(upload_ids: List[str], file_format: Format):

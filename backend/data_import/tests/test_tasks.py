@@ -1,14 +1,16 @@
 import os
 import pathlib
 import shutil
+from unittest.mock import patch
 
 from django.core.files import File
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django_drf_filepond.models import StoredUpload, TemporaryUpload
 from django_drf_filepond.utils import _get_file_id
 
-from data_import.celery_tasks import import_dataset
-from data_import.pipeline.catalog import RELATION_EXTRACTION
+from data_import.celery_tasks import check_file_type, import_dataset
+from data_import.pipeline.catalog import ImageFile, RELATION_EXTRACTION
+from data_import.pipeline.exceptions import FileTypeException
 from examples.models import Example
 from label_types.models import SpanType
 from labels.models import Category, Span
@@ -329,3 +331,22 @@ class TestFileTypeChecking(TestImportData):
         response = self.import_dataset(filename, file_format, self.task)
         self.assertEqual(len(response["error"]), 1)
         self.assertIn("unexpected", response["error"][0]["message"])
+
+
+@override_settings(ENABLE_FILE_TYPE_CHECK=True)
+class TestTextFileTypeChecking(TestImportData):
+    task = ProjectType.DOCUMENT_CLASSIFICATION
+
+    def test_plain_text_import(self):
+        response = self.import_dataset("example.txt", "TextFile", self.task)
+        self.assertEqual(response["error"], [])
+
+
+class TestUnknownFileTypeChecking(SimpleTestCase):
+    @override_settings(ENABLE_FILE_TYPE_CHECK=True)
+    @patch("data_import.celery_tasks.filetype.guess", return_value=None)
+    def test_unknown_mime_is_rejected_for_image(self, _guess):
+        with self.assertRaises(FileTypeException) as error:
+            check_file_type("synthetic.bin", ImageFile(), "unused-path")
+
+        self.assertEqual(error.exception.filetype, "unknown")
